@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -euo pipefail
+
+key_dir=/tmp/zbm-inject-pass
+
+args=()
+initrd=
+temp_initrd=
+
+cleanup() {
+    if [[ -n "${temp_initrd}" ]]; then
+        rm -f "${temp_initrd}"
+    fi
+}
+
+trap cleanup EXIT
+
+while [[ "${#}" -gt 0 ]]; do
+    case "${1}" in
+    --initrd=*)
+        initrd=${1#--initrd=}
+        shift
+        ;;
+    --initrd)
+        initrd=${2}
+        shift 2
+        ;;
+    *)
+        args+=("${1}")
+        shift
+        ;;
+    esac
+done
+
+if [[ -n "${initrd}" ]]; then
+    if [[ -d "${key_dir}" ]]; then
+        temp_initrd=$(mktemp)
+        cp "${initrd}" "${temp_initrd}"
+
+        # To append an additional initrd segment, the new archive must aligned to a
+        # 4-byte boundary: https://unix.stackexchange.com/a/737219
+        initrd_size=$(stat -c '%s' "${initrd}")
+        initrd_size=$(((initrd_size + 3) / 4 * 4))
+
+        truncate -s "${initrd_size}" "${temp_initrd}"
+
+        pushd "${key_dir}"
+        find . -mindepth 1 -print0 | cpio -0o -H newc --quiet >> "${temp_initrd}"
+        popd
+
+        initrd=${temp_initrd}
+    fi
+
+    args+=("--initrd=${initrd}")
+fi
+
+kexec.orig "${args[@]}"

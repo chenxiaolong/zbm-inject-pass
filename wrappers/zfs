@@ -1,0 +1,128 @@
+#!/bin/bash
+
+set -euo pipefail
+
+key_dir=/tmp/zbm-inject-pass
+
+get_key_file() {
+    local key_location
+
+    key_location=$(zfs.orig get keylocation -H -o value "${1}")
+    if [[ "${key_location}" == file://* ]]; then
+        key_location=${key_location#file://}
+        echo "${key_location}"
+    fi
+}
+
+load_key_wrapper() {
+    local \
+        args=("${@}") \
+        prompt=no \
+        enc_root='' \
+        key_file \
+        use_inject \
+        passphrase
+
+    while [[ "${#}" -gt 0 ]]; do
+        case "${1}" in
+        -a)
+            enc_root=
+            shift
+            ;;
+        -L)
+            if [[ "${2:-}" == prompt ]]; then
+                prompt=yes
+            fi
+            shift 2
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            if [[ -n "${enc_root}" ]]; then
+                # Give up and let zfs handle the bad arguments
+                enc_root=
+            else
+                enc_root=${1}
+            fi
+            shift
+            ;;
+        esac
+    done
+
+    if [[ -n "${enc_root}" && "${prompt}" == yes ]]; then
+        key_file=$(get_key_file "${enc_root}")
+        use_inject=$(zfs.orig get zbm-inject-pass:enable -H -o value "${enc_root}")
+
+        if [[ -n "${key_file}" && "${use_inject}" == on ]]; then
+            for _ in {1..3}; do
+                read -r -s -p "Enter passphrase for '${enc_root}':" passphrase
+                echo
+
+                if zfs.orig load-key "${args[@]}" <<< "${passphrase}"; then
+                    mkdir -p "${key_dir}/${key_file%/*}"
+                    echo "${passphrase}" > "${key_dir}/${key_file}"
+                    exit 0
+                fi
+            done
+
+            exit 1
+        fi
+    fi
+
+    exec zfs.orig load-key "${args[@]}"
+}
+
+unload_key_wrapper() {
+    local args=("${@}") all=no enc_root='' key_file
+
+    while [[ "${#}" -gt 0 ]]; do
+        case "${1}" in
+        -a)
+            all=yes
+            shift
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            if [[ -n "${enc_root}" ]]; then
+                # Give up and let zfs handle the bad arguments
+                enc_root=
+            else
+                enc_root=${1}
+            fi
+            shift
+            ;;
+        esac
+    done
+
+    zfs.orig unload-key "${args[@]}"
+
+    if [[ "${all}" == yes ]]; then
+        rm -rf "${key_dir}"
+    elif [[ -n "${enc_root}" ]]; then
+        key_file=$(get_key_file "${enc_root}")
+
+        if [[ -n "${key_file}" ]]; then
+            rm -f "${key_dir}/${key_file}"
+            if [[ -d "${key_dir}" ]]; then
+                find "${key_dir}" -empty -delete
+            fi
+        fi
+    fi
+}
+
+case "${1:-}" in
+    load-key)
+        shift
+        load_key_wrapper "${@}"
+        ;;
+    unload-key)
+        shift
+        unload_key_wrapper "${@}"
+        ;;
+    *)
+        exec zfs.orig "${@}"
+        ;;
+esac
