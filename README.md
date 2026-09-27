@@ -58,6 +58,14 @@ When `kexec --initrd <initramfs> <...>` is run, if `/tmp/zbm-inject-pass` has an
 
 While there's not much that can go wrong with these wrappers, the build process is a bit fragile and depends on implementation details of dracut/mkinitcpio. Neither tool supports renaming files (eg. `/usr/bin/zfs` -> `/usr/bin/zfs.orig`), so this project resorts to doing some ugly hacks to make it work. These might need to be updated for future dracut/mkinitcpio changes.
 
+## Contributing
+
+([AI policy](https://github.com/chenxiaolong/chenxiaolong/blob/master/AI_POLICY.md))
+
+Bug fix pull requests are welcome and much appreciated!
+
+If you are interested in implementing a new feature and would like to see it included in zbm-inject-pass, please open an issue to discuss it first.
+
 ## License
 
 This project is licensed under the same MIT license as ZFSBootMenu. Please see [`LICENSE`](./LICENSE) for details.
